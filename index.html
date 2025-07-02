@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式报告：中美创新药研发成本对比</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Corporate Harmony (Slate, Amber, Sky) -->
+    <!-- Application Structure Plan: The application is designed as a top-down narrative dashboard. It starts with a high-level summary. The core is a comprehensive, static comparison chart showing all data categories (Small/Large molecules, US/CN) across all R&D stages simultaneously, using a logarithmic scale for clarity. This removes interaction complexity and provides an immediate, holistic overview. This is followed by a single, consolidated data table for detailed lookup. The structure concludes with sections on cost drivers and strategic insights, guiding the user from a complete data overview to analysis and conclusions. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Comprehensive US vs China R&D cost comparison for all drug types and stages. Goal: Facilitate a complete, direct comparison in one view. Viz: Grouped Bar Chart with floating bars on a logarithmic scale (Chart.js/Canvas). Interaction: Tooltips on hover. Justification: A grouped floating bar chart is perfect for comparing multiple data series with value ranges. The logarithmic scale is essential to visualize data spanning several orders of magnitude legibly.
+        - Report Info: Detailed data for all categories. Goal: Provide precise figures and calculated multiples. Viz: A single, consolidated HTML table with section headers. Interaction: Static display. Justification: A unified table allows for easy scanning and comparison across all data points without user action.
+        - Library/Method: Chart.js for the chart (Canvas), Vanilla JS for data population, Tailwind CSS for styling. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Noto Sans SC', sans-serif; background-color: #f8fafc; }
+        .chart-container { position: relative; width: 100%; max-width: 1200px; margin-left: auto; margin-right: auto; height: 450px; max-height: 600px; }
+        @media (min-width: 768px) { .chart-container { height: 500px; } }
+        .smooth-transition { transition: all 0.3s ease-in-out; }
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.5s ease-in-out; }
+        .table-section-header th {
+            background-color: #e2e8f0;
+            color: #1e293b;
+            font-weight: 600;
+            text-align: center;
+            padding: 0.75rem;
+        }
+    </style>
+</head>
+<body class="text-slate-700">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+            <h1 class="text-xl md:text-2xl font-bold text-slate-800">中美创新药研发成本解析</h1>
+            <div class="hidden md:flex space-x-8">
+                <a href="#dashboard" class="text-slate-600 hover:text-sky-600 smooth-transition">成本对比</a>
+                <a href="#drivers" class="text-slate-600 hover:text-sky-600 smooth-transition">驱动因素</a>
+                <a href="#strategy" class="text-slate-600 hover:text-sky-600 smooth-transition">战略启示</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+
+        <section id="hero" class="text-center mb-12 md:mb-16">
+            <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-800 mb-4">洞察全球研发新格局</h2>
+            <p class="text-lg md:text-xl text-slate-600 max-w-3xl mx-auto">
+                深入剖析中美创新药研发的成本结构差异，通过交互式数据探索，为您揭示项目预算、全球战略和投资决策背后的关键信息。
+            </p>
+            <div class="mt-8 bg-white p-6 rounded-2xl shadow-lg inline-block border border-slate-200">
+                <p class="text-base text-slate-500">核心发现</p>
+                <p class="text-2xl md:text-3xl font-bold text-sky-600">美国研发直接成本可达中国的<span class="text-amber-500">2至4倍</span></p>
+            </div>
+        </section>
+
+        <section id="dashboard" class="mb-12 md:mb-16">
+            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200">
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl md:text-3xl font-bold text-slate-800 mb-4 md:mb-0">交互式成本对比</h3>
+                </div>
+
+                <div id="intro-text" class="text-slate-600 mb-8 p-4 bg-slate-50 rounded-lg text-center">
+                    <p>下方图表和表格全面对比了中美两国在小分子与大分子药物研发各阶段及总成本的范围。</p>
+                </div>
+
+                <div class="grid grid-cols-1">
+                    <div class="lg:col-span-3">
+                         <div class="chart-container">
+                            <canvas id="mainChart"></canvas>
+                        </div>
+                        <p class="text-center text-sm text-slate-500 mt-2">图1：中美各类药物研发成本范围对比 (百万美元, 对数坐标轴)</p>
+                    </div>
+                </div>
+
+                <div class="mt-12 overflow-x-auto">
+                     <h4 class="text-xl font-bold text-slate-800 mb-4 text-center">详细数据表</h4>
+                    <table id="data-table" class="w-full text-left border-collapse">
+                        <thead class="bg-slate-100">
+                            <tr>
+                                <th class="p-3 font-semibold text-slate-600">研发阶段/核心模块</th>
+                                <th class="p-3 font-semibold text-slate-600 text-right">美国(US)成本范围 (百万美元)</th>
+                                <th class="p-3 font-semibold text-slate-600 text-right">中国(CN)成本范围 (百万美元)</th>
+                                <th class="p-3 font-semibold text-slate-600 text-right">差异倍数 (US/CN)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="drivers" class="mb-12 md:mb-16">
+            <h3 class="text-3xl font-bold text-slate-800 text-center mb-8">成本差异的关键驱动因素</h3>
+            <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
+                <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 hover:shadow-xl hover:-translate-y-1 smooth-transition">
+                    <span class="text-4xl">👥</span>
+                    <h4 class="font-bold text-lg mt-2 mb-2 text-slate-800">人力成本</h4>
+                    <p class="text-slate-600 text-sm">美国科研、技术及管理人员的薪酬水平远高于中国，是构成基础成本差异的核心。</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 hover:shadow-xl hover:-translate-y-1 smooth-transition">
+                    <span class="text-4xl">🏥</span>
+                    <h4 class="font-bold text-lg mt-2 mb-2 text-slate-800">临床试验</h4>
+                    <p class="text-slate-600 text-sm">美国高昂的单患者成本、医院运营费和管理费，导致临床阶段的成本差距被急剧放大。</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 hover:shadow-xl hover:-translate-y-1 smooth-transition">
+                    <span class="text-4xl">🔬</span>
+                    <h4 class="font-bold text-lg mt-2 mb-2 text-slate-800">外包服务 (CRO)</h4>
+                    <p class="text-slate-600 text-sm">中国CRO/CDMO服务具备全球成本优势，报价通常比欧美同行低40%-60%，有效降低了临床前开销。</p>
+                </div>
+                 <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 hover:shadow-xl hover:-translate-y-1 smooth-transition">
+                    <span class="text-4xl">🏢</span>
+                    <h4 class="font-bold text-lg mt-2 mb-2 text-slate-800">基础设施</h4>
+                    <p class="text-slate-600 text-sm">美国生物技术中心的实验室租赁和运营成本高昂，进一步推高了研发的固定支出。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="strategy">
+            <h3 class="text-3xl font-bold text-slate-800 text-center mb-8">战略启示与未来趋势</h3>
+            <div class="max-w-4xl mx-auto space-y-4">
+                <div class="accordion-item bg-white rounded-lg shadow-md border border-slate-200">
+                    <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-slate-800">
+                        <span>战略启示</span>
+                        <span class="accordion-icon text-2xl text-sky-600 smooth-transition transform">+</span>
+                    </button>
+                    <div class="accordion-content">
+                        <div class="p-5 pt-0 text-slate-600">
+                            <ul class="list-disc list-inside space-y-2">
+                                <li><b>“全球整合”研发模式</b>: 利用中国成本优势进行早期研发，结合美国成熟市场进行后期开发和商业化，可实现成本效益最大化。</li>
+                                <li><b>中国生物技术公司的成本优势</b>: 本土企业可以利用低成本优势，以更少的资本将项目推向关键里程碑，增强全球竞争力。</li>
+                                <li><b>投资决策考量</b>: 投资者应根据项目研发地的成本结构，评估其资本效率和未来融资需求，做出更精准的判断。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item bg-white rounded-lg shadow-md border border-slate-200">
+                    <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-slate-800">
+                        <span>未来趋势</span>
+                        <span class="accordion-icon text-2xl text-sky-600 smooth-transition transform">+</span>
+                    </button>
+                    <div class="accordion-content">
+                         <div class="p-5 pt-0 text-slate-600">
+                            <ul class="list-disc list-inside space-y-2">
+                                <li><b>中国成本上升</b>: 随着经济发展和行业规范化，中国的研发成本将持续上升，但短期内与美国的差距依然显著。</li>
+                                <li><b>新疗法的影响</b>: 细胞与基因治疗(CGT)等复杂疗法将推高整体研发费用，但两国的相对成本差异逻辑依然存在。</li>
+                                <li><b>效率与技术的角色</b>: 人工智能(AI)等新技术的应用有望提升研发效率，部分对冲成本上涨的压力。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-white mt-12 md:mt-16 border-t">
+        <div class="container mx-auto px-6 py-4 text-center text-slate-500 text-sm">
+            <p>&copy; 2025 中美创新药研发成本分析报告。数据基于行业基准估算，仅供参考。</p>
+            <p>报告生成日期: 2025年7月2日</p>
+        </div>
+    </footer>
+
+    <script>
+        const costData = {
+            smallMolecule: {
+                table: [
+                    { stage: '1. 早期发现 (TIV-H2L)', us: '$3.5 - $6.5', cn: '$2.1 - $3.9' },
+                    { stage: '2. 先导化合物优化至IND申报', us: '$15.1 - $18.8', cn: '$9.1 - $11.3' },
+                    { stage: '3. 运营 (3-4年), IP及其他', us: '$5.2 - $7.3', cn: '$2.6 - $3.7' },
+                    { stage: '<b>临床前直接成本小计</b>', us: '<b>$23.8 - $32.6</b>', cn: '<b>$13.8 - $18.9</b>' },
+                    { stage: 'Phase I', us: '$5 - $15', cn: '$1 - $3' },
+                    { stage: 'Phase II / III', us: '$120 - $300', cn: '$35 - $85' },
+                    { stage: '<b>临床阶段预估总成本</b>', us: '<b>$125 - $315</b>', cn: '<b>$36 - $88</b>' },
+                    { stage: '<b>研发总成本</b>', us: '<b>$148.8 - $347.6</b>', cn: '<b>$49.8 - $106.9</b>' },
+                ]
+            },
+            largeMolecule: {
+                table: [
+                    { stage: '1. 早期发现 (TIV-H2L)', us: '$4.0 - $7.0', cn: '$2.4 - $4.2' },
+                    { stage: '2. 先导化合物优化至IND申报', us: '$37.8 - $58.2', cn: '$22.7 - $34.9' },
+                    { stage: '3. 运营 (3-4年), IP及其他', us: '$10.2 - $13.4', cn: '$5.1 - $6.7' },
+                    { stage: '<b>临床前直接成本小计</b>', us: '<b>$52.0 - $78.6</b>', cn: '<b>$30.2 - $45.8</b>' },
+                    { stage: 'Phase I', us: '$10 - $25', cn: '$2 - $6' },
+                    { stage: 'Phase II / III', us: '$180 - $490+', cn: '$48 - $125' },
+                    { stage: '<b>临床阶段预估总成本</b>', us: '<b>$190 - $515+</b>', cn: '<b>$50 - $131</b>' },
+                    { stage: '<b>研发总成本</b>', us: '<b>$242.0 - $593.6</b>', cn: '<b>$80.2 - $176.8</b>' },
+                ]
+            }
+        };
+
+        let mainChart;
+        const tableBody = document.getElementById('table-body');
+
+        function parseRange(str) {
+            if (!str || typeof str !== 'string') return [0, 0];
+            str = str.replace(/<b>|<\/b>|\s/g, '');
+            const cleaned = str.replace(/\$|\+/g, '').trim();
+            const parts = cleaned.split('-').map(s => parseFloat(s.trim()));
+            if (parts.length === 1 && !isNaN(parts[0])) return [parts[0], parts[0]];
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return [parts[0], parts[1]];
+            return [0, 0];
+        }
+
+        function calculateMultiple(usStr, cnStr) {
+            const [usMin, usMax] = parseRange(usStr);
+            const [cnMin, cnMax] = parseRange(cnStr);
+            const usMid = (usMin + usMax) / 2;
+            const cnMid = (cnMin + cnMax) / 2;
+            if (isNaN(usMid) || isNaN(cnMid) || cnMid === 0) return 'N/A';
+            const multiple = usMid / cnMid;
+            return `~${multiple.toFixed(1)}x`;
+        }
+
+        function initApp() {
+            const mainCtx = document.getElementById('mainChart').getContext('2d');
+            mainChart = new Chart(mainCtx, {
+                type: 'bar',
+                data: formatDataForMainChart(),
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: false },
+                        legend: { position: 'top' },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    const value = context.raw;
+                                    if (value && value.length === 2) {
+                                        label += `$${value[0]} - $${value[1]} 百万`;
+                                    }
+                                    return label;
+                                },
+                            }
+                        },
+                    },
+                    scales: {
+                        y: { 
+                            type: 'logarithmic',
+                            beginAtZero: false, // Log scale cannot start at 0
+                            min: 1, // Start log scale at 1
+                            title: { display: true, text: '成本范围 (百万美元, 对数坐标)' }
+                        },
+                        x: {
+                             title: { display: false }
+                        }
+                    },
+                }
+            });
+
+            populateTable();
+        }
+        
+        function formatDataForMainChart() {
+            const labels = ['早期发现', '先导化合物至IND', '运营及其他', '临床I期', '临床II/III期', '研发总成本'];
+            
+            const datasets = [
+                {
+                    label: '美国-小分子',
+                    data: costData.smallMolecule.table.map(row => parseRange(row.us)),
+                    backgroundColor: 'rgba(2, 132, 199, 0.7)', // Darker Sky
+                    borderColor: 'rgba(2, 132, 199, 1)',
+                    borderWidth: 1,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
+                    borderSkipped: false,
+                },
+                {
+                    label: '中国-小分子',
+                    data: costData.smallMolecule.table.map(row => parseRange(row.cn)),
+                    backgroundColor: 'rgba(125, 211, 252, 0.7)', // Lighter Sky
+                    borderColor: 'rgba(125, 211, 252, 1)',
+                    borderWidth: 1,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
+                    borderSkipped: false,
+                },
+                {
+                    label: '美国-大分子',
+                    data: costData.largeMolecule.table.map(row => parseRange(row.us)),
+                    backgroundColor: 'rgba(249, 115, 22, 0.7)', // Darker Amber
+                    borderColor: 'rgba(249, 115, 22, 1)',
+                    borderWidth: 1,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
+                    borderSkipped: false,
+                },
+                {
+                    label: '中国-大分子',
+                    data: costData.largeMolecule.table.map(row => parseRange(row.cn)),
+                    backgroundColor: 'rgba(251, 191, 36, 0.7)', // Lighter Amber
+                    borderColor: 'rgba(251, 191, 36, 1)',
+                    borderWidth: 1,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.7,
+                    borderSkipped: false,
+                }
+            ];
+            
+            // For the chart, we only want the main stages, not subtotals
+            const chartLabels = ['早期发现', '先导化合物...', '运营...', 'Phase I', 'Phase II/III', '总成本'];
+            const chartDataIndices = [0, 1, 2, 4, 5, 7]; // Indices from the table data array
+
+            return {
+                labels: chartLabels,
+                datasets: datasets.map(ds => ({
+                    ...ds,
+                    data: chartDataIndices.map(i => ds.data[i])
+                }))
+            };
+        }
+
+        function populateTable() {
+            tableBody.innerHTML = ''; // Clear existing
+            
+            // Small Molecule Section
+            let smallMoleculeHtml = `<tr class="table-section-header"><th colspan="4">小分子肿瘤药</th></tr>`;
+            costData.smallMolecule.table.forEach(row => {
+                const multiple = calculateMultiple(row.us, row.cn);
+                smallMoleculeHtml += `
+                <tr class="border-b border-slate-200 hover:bg-slate-50">
+                    <td class="p-3 text-slate-800">${row.stage}</td>
+                    <td class="p-3 text-right text-slate-600">${row.us}</td>
+                    <td class="p-3 text-right text-slate-600">${row.cn}</td>
+                    <td class="p-3 text-right text-amber-600 font-medium">${multiple}</td>
+                </tr>`;
+            });
+            tableBody.innerHTML += smallMoleculeHtml;
+
+            // Large Molecule Section
+            let largeMoleculeHtml = `<tr class="table-section-header"><th colspan="4">大分子(单抗)肿瘤药</th></tr>`;
+            costData.largeMolecule.table.forEach(row => {
+                const multiple = calculateMultiple(row.us, row.cn);
+                largeMoleculeHtml += `
+                <tr class="border-b border-slate-200 hover:bg-slate-50">
+                    <td class="p-3 text-slate-800">${row.stage}</td>
+                    <td class="p-3 text-right text-slate-600">${row.us}</td>
+                    <td class="p-3 text-right text-slate-600">${row.cn}</td>
+                    <td class="p-3 text-right text-amber-600 font-medium">${multiple}</td>
+                </tr>`;
+            });
+            tableBody.innerHTML += largeMoleculeHtml;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+
+            const accordions = document.querySelectorAll('.accordion-item');
+            accordions.forEach(item => {
+                const header = item.querySelector('.accordion-header');
+                const content = item.querySelector('.accordion-content');
+                const icon = item.querySelector('.accordion-icon');
+                header.addEventListener('click', () => {
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                        icon.classList.remove('rotate-45');
+                    } else {
+                        accordions.forEach(otherItem => {
+                           otherItem.querySelector('.accordion-content').style.maxHeight = null;
+                           otherItem.querySelector('.accordion-icon').classList.remove('rotate-45');
+                        });
+                        content.style.maxHeight = content.scrollHeight + 'px';
+                        icon.classList.add('rotate-45');
+                    }
+                });
+            });
+        });
+
+    </script>
+</body>
+</html>
